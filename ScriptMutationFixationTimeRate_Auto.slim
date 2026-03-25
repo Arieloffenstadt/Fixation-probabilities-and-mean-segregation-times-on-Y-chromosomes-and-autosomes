@@ -1,0 +1,73 @@
+// set up a simple neutral simulation
+initialize() {
+	initializeMutationRate(0);
+	defineConstant("sNorm",s/N); //Divide s by N
+	initializeMutationType("m1", h, "f", sNorm);
+	m1.convertToSubstitution = F; // Ensure that the mutation is not removed when it goes to fixation, so we can determine when it occurs.
+	initializeMutationType("m2", 0.5, "f", 0);// mutation defining mating type locus 1	(The Y-like male determining allele)
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", m1, 1.0);
+	
+	// 2 uniform chromosomes of length 5bp with no recombination
+	initializeGenomicElement(g1, 0, 9);
+	initializeRecombinationRate(c(0,0.5,0),c(4,5,9)); //0.5 recombination at position 5 -> Split the chromosome in two independant chromosome: one sex chromosome, one autosome
+	initializeSex("A");
+	defineConstant("file",paste(c("../Output/MutationFixationRate_N", N,"_Auto_130126.txt"), sep="")); // Define the output file
+}
+
+// create a population of N individuals
+1 early() {
+	
+	sim.addSubpop("p1", N); 
+	i = p1.individuals;
+   i[i.sex == "M"].genome2.addNewDrawnMutation(m2, 2); //Introduce the mutation defining sex at positon 2. The chromosome from pos 0 to 4 become the sex chromosome
+}
+
+1:100000	modifyChild(p1) { //simulating the meeting between two gamete and fecondation depand on their genotype at the sex locus
+	numY = sum(child.genomes.containsMarkerMutation(m2, 2));
+	// no individual should have more than one Y
+	if (numY > 1)
+		stop("### ERROR: got too many Ys");
+	// females should have 0 Y's
+	if (child.sex == "F" & numY > 0)
+		return F;
+	// males should have 1 Y
+	if (child.sex == "M" & numY == 0)
+		return F;
+	return T;
+}
+
+
+1 late() {  //Introduce the mutation that we track frequency
+Sampled=sample(p1.genomes, 1); //Randomly sample a chromosome of an individual
+Pos=6;//Position of the mutation, on the autosome
+Sampled.addNewDrawnMutation(m1, Pos); //Add the mutation in this sample at this position
+defineConstant("Sex", "Autosome");
+}
+
+2:100000 early() {
+ mut1 = sim.mutationsOfType(m1);
+if (size (mut1) != 1) // If their is no more mutation segregating in the population (i.e. the inversion get Lost)
+	{
+	line=paste(c(0, sim.cycle, Sex, N, h, sNorm, Rep), sep=" ");
+	writeFile(file, line, append=T);
+	sim.simulationFinished(); // The simulaten end when their is no more mutations segregating
+	}
+else
+	{
+	Freq1=sim.mutationFrequencies(NULL, mut1); //Frequency of the mutation
+	if (Freq1==1.0)
+		{
+		line=paste(c(1, sim.cycle, Sex, N, h, sNorm, Rep), sep=" ");
+		writeFile(file, line, append=T);
+		sim.simulationFinished(); // The simulaten end when their is no more mutations segregating
+		}	
+	}
+}
+
+100001 early() { //Stop the simulation after 100000 generation.
+	mut1 = sim.mutationsOfType(m1);
+	Freq1=sim.mutationFrequencies(NULL, mut1);
+	line=paste(c(Freq1, sim.cycle, Sex, N, h, sNorm, Rep), sep=" ");
+		writeFile(file, line, append=T);
+		}
